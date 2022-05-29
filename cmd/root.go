@@ -1,32 +1,26 @@
-/*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 
+	"github.com/mmcdole/gofeed"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "latest-from-feed",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Use:   "rss-feed",
+	Short: "Parse RSS feed command",
+	Long:  `The rss-feed is a command that supports parsing RSS, Atom and JSON feeds.`,
+	Run:   Fetch,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return CheckRequiredFlags(cmd.Flags())
+	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -35,13 +29,85 @@ func Execute() {
 }
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
+	// latest flag
+	rootCmd.Flags().BoolP("latest", "l", false, "Only print latest item.")
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.latest-from-feed.yaml)")
+	// URL flag (required)
+	rootCmd.Flags().StringP("url", "u", "", "(required)RSS feed URL to fetch data.")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.MarkFlagRequired("url")
+}
+
+func CheckRequiredFlags(flags *pflag.FlagSet) error {
+	requiredError := false
+	flagName := ""
+
+	flags.VisitAll(func(flag *pflag.Flag) {
+		requiredAnnotation := flag.Annotations[cobra.BashCompOneRequiredFlag]
+		if len(requiredAnnotation) == 0 {
+			return
+		}
+
+		flagRequired := requiredAnnotation[0] == "true"
+
+		if flagRequired && !flag.Changed {
+			requiredError = true
+			flagName = flag.Name
+		}
+	})
+
+	if requiredError {
+		return errors.New("Required flag `" + flagName + "` has not been set.")
+	}
+
+	return nil
+}
+
+func Fetch(cmd *cobra.Command, args []string) {
+	targetUrl, err := cmd.Flags().GetString("url")
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fp := gofeed.NewParser()
+	feeds, err := fp.ParseURL(targetUrl)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	latest, err := cmd.Flags().GetBool("latest")
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	var resp []byte
+	if latest {
+		resp, err = encodeJson(feeds.Items[0])
+	} else {
+		resp, err = encodeJson(feeds.Items)
+	}
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Println(string(resp))
+}
+
+func encodeJson(i interface{}) ([]byte, error) {
+	var result []byte
+	switch i.(type) {
+	case *gofeed.Item, []*gofeed.Item:
+		result, err := json.Marshal(i)
+		if err != nil {
+			return result, err
+		}
+		return result, nil
+	default:
+		return result, errors.New(fmt.Sprintf("%T\n", i) + "is not allowed")
+	}
 }
