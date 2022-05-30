@@ -20,12 +20,6 @@ jobs:
     - name: Fetch all tags
       run: git fetch --force --tags
 
-    - name: Validate branch
-      if: github.ref != 'refs/heads/main'
-      run: |
-        echo 'Invalid branch!!'
-        exit 1
-
     - name: Setup Go
       uses: actions/setup-go@v3
       with:
