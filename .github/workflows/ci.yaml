@@ -22,7 +22,7 @@ jobs:
 
     - name: Validate branch
       if: github.ref != 'refs/heads/main'
-      runs: |
+      run: |
         echo 'Invalid branch!!'
         exit 1
 
